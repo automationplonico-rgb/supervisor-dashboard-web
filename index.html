@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Supervisor Call Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .card-leave { opacity: 0; transform: translateX(24px) scale(.98); transition: all .35s ease; }
+    .modal-enter { animation: pop .18s ease-out; }
+    @keyframes pop { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
+    .toast-enter { animation: slide .25s ease-out; }
+    @keyframes slide { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: none; } }
+    .status-opt input:checked + span { border-color: #2563eb; background: #eff6ff; color: #1d4ed8; box-shadow: 0 0 0 2px #bfdbfe; }
+  </style>
+</head>
+<body class="bg-gray-100 text-gray-800 min-h-screen">
+
+  <!-- Header -->
+  <header class="max-w-3xl mx-auto px-4 pt-10 pb-4">
+    <div class="flex items-end justify-between gap-4">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-wider text-blue-600">Supervisor Call Dashboard</p>
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 mt-1">Leads Pendientes de Llamada</h1>
+      </div>
+      <div class="shrink-0 flex items-center gap-2">
+        <span id="counter" class="text-sm font-medium bg-white border border-gray-200 rounded-full px-3 py-1 text-gray-600">0 leads</span>
+        <button id="logoutBtn" type="button" title="Cambiar clave de acceso" class="hidden text-sm text-gray-500 hover:text-gray-800 border border-gray-200 bg-white rounded-full px-3 py-1 transition">Salir</button>
+      </div>
+    </div>
+    <p id="sourceNote" class="text-xs text-gray-400 mt-2"></p>
+  </header>
+
+  <!-- Lista -->
+  <main class="max-w-3xl mx-auto px-4 pb-16">
+    <div id="leadList" class="space-y-3"></div>
+    <div id="emptyState" class="hidden text-center py-16 bg-white rounded-xl border border-dashed border-gray-300">
+      <p class="text-3xl">🎉</p>
+      <p class="mt-2 font-semibold text-gray-700">No hay leads pendientes</p>
+      <p class="text-sm text-gray-400">Todo el equipo está al día con las llamadas.</p>
+    </div>
+  </main>
+
+  <!-- Modal -->
+  <div id="modal" class="hidden fixed inset-0 z-40 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
+    <div class="modal-enter bg-white w-full max-w-lg rounded-2xl shadow-2xl max-h-[92vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="px-6 pt-6 pb-4 border-b border-gray-100">
+        <h2 id="modalTitle" class="text-lg font-bold text-gray-900">Registrar Llamada</h2>
+        <p id="modalLead" class="text-sm text-gray-500 mt-0.5"></p>
+      </div>
+
+      <form id="callForm" class="px-6 py-5 space-y-5">
+        <fieldset>
+          <legend class="text-sm font-semibold text-gray-700 mb-2">Estado de la llamada</legend>
+          <div id="statusOptions" class="grid grid-cols-2 sm:grid-cols-3 gap-2"></div>
+        </fieldset>
+
+        <div>
+          <label for="notes" class="text-sm font-semibold text-gray-700">Notas de la llamada</label>
+          <textarea id="notes" rows="6" placeholder="Resumen de la conversación, próximos pasos, objeciones del cliente..."
+            class="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y"></textarea>
+        </div>
+
+        <p id="formError" class="hidden text-sm text-red-600"></p>
+
+        <div class="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-1">
+          <button type="button" id="cancelBtn" class="px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">Cancelar</button>
+          <button type="submit" id="saveBtn" class="px-5 py-2.5 rounded-lg text-sm font-semibold text-white bg-green-600 hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed transition">Guardar y Actualizar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Acceso -->
+  <div id="loginModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-100">
+    <form id="loginForm" class="modal-enter bg-white w-full max-w-sm rounded-2xl shadow-xl border border-gray-200 p-6 space-y-4">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-wider text-blue-600">Supervisor Call Dashboard</p>
+        <h2 class="text-xl font-bold text-gray-900 mt-1">Acceso del supervisor</h2>
+        <p class="text-sm text-gray-500 mt-1">Introduce la clave de acceso que te dio el administrador.</p>
+      </div>
+      <input id="loginKey" type="password" autocomplete="current-password" placeholder="Clave de acceso"
+        class="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+      <p id="loginError" class="hidden text-sm text-red-600"></p>
+      <button type="submit" class="w-full px-4 py-2.5 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition">Entrar</button>
+    </form>
+  </div>
+
+  <!-- Toasts -->
+  <div id="toasts" class="fixed top-4 right-4 z-50 space-y-2"></div>
+
+<script>
+  // ====== CONFIGURACIÓN ======
+  const URL_N8N_GET  = 'https://n8n.alchimedia.co.uk/webhook/obtener-llamadas';
+  const URL_N8N_POST = 'https://n8n.alchimedia.co.uk/webhook/actualizar-llamada';
+
+  const STATUSES = ['Quote sent', 'Contacted', 'To Book', 'Quote accepted', 'No answer'];
+
+  // Datos de prueba (se usan si el webhook no está configurado, falla o devuelve vacío)
+  const MOCK_LEADS = [
+    { id: 1, name: 'María González', phone: '(305) 555-0142', platform: 'Homerun', salesperson: 'Carlos Ruiz',
+      pickup: '1250 Brickell Ave, Miami, FL 33131', dropoff: '4800 Collins Ave, Miami Beach, FL 33140',
+      supervisor_note: 'Cliente pide mudanza el sábado; tiene piano de cola.' },
+    { id: 2, name: 'James Carter', phone: '(786) 555-0199', platform: 'Bark', salesperson: 'Laura Méndez',
+      pickup: '321 NW 5th St, Fort Lauderdale, FL 33301', dropoff: '900 Peachtree St, Atlanta, GA 30309' },
+    { id: 3, name: 'Ana Patricia Silva', phone: '(954) 555-0177', platform: 'Homerun', salesperson: 'Carlos Ruiz',
+      pickup: '77 SW 8th St, Miami, FL 33130', dropoff: '15 Ocean Dr, Key West, FL 33040' },
+    { id: 4, name: 'Robert Johnson', phone: '(407) 555-0123', platform: 'Bark', salesperson: 'Diego Paredes',
+      pickup: '2200 Orange Ave, Orlando, FL 32806', dropoff: '1100 Lamar St, Austin, TX 78703' }
+  ];
+
+  // ====== ACCESO (clave enviada en el header X-Dashboard-Key) ======
+  const KEY_STORAGE = 'supervisor_dashboard_key';
+  const getKey = () => { try { return localStorage.getItem(KEY_STORAGE) || ''; } catch { return ''; } };
+  const setKey = k => { try { localStorage.setItem(KEY_STORAGE, k); } catch {} };
+  const clearKey = () => { try { localStorage.removeItem(KEY_STORAGE); } catch {} };
+  const authHeaders = (extra = {}) => ({ ...extra, 'X-Dashboard-Key': getKey() });
+  const authError = () => Object.assign(new Error('Clave de acceso invalida'), { auth: true });
+
+  function showLogin(msg) {
+    $('loginModal').classList.remove('hidden');
+    const err = $('loginError');
+    err.textContent = msg || '';
+    err.classList.toggle('hidden', !msg);
+    $('loginKey').value = '';
+    setTimeout(() => $('loginKey').focus(), 50);
+  }
+
+  // ====== ESTADO ======
+  let leads = [];
+  let activeLead = null;
+
+  const $ = id => document.getElementById(id);
+  const isConfigured = url => url && !url.startsWith('AQUI_');
+
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  // Normaliza campos (tolera nombres alternativos que pueda devolver n8n)
+  function normalize(l, i) {
+    return {
+      id: l.id_conversacion ?? l.id ?? l.ID ?? l.lead_id ?? i,
+      name: l.name ?? l.nombre ?? l.client_name ?? l.customer ?? 'Sin nombre',
+      phone: l.phone ?? l.telefono ?? l.teléfono ?? '—',
+      platform: l.platform ?? l.plataforma ?? l.source ?? '—',
+      salesperson: l.salesperson ?? l.vendedor ?? l.seller ?? l.assigned_to ?? '—',
+      pickup: l.pickup ?? l.pick_up ?? l.pickup_address ?? '—',
+      dropoff: l.dropoff ?? l.drop_off ?? l.dropoff_address ?? '—',
+      note: String(l.supervisor_note ?? l.nota_vendedor ?? '').trim()
+    };
+  }
+
+  // ====== CARGA ======
+  async function loadLeads() {
+    let note = '';
+    try {
+      if (!isConfigured(URL_N8N_GET)) throw new Error('Webhook GET no configurado');
+      if (!getKey()) throw authError();
+      const res = await fetch(URL_N8N_GET, { headers: authHeaders() });
+      if (res.status === 401 || res.status === 403) throw authError();
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      let data = await res.json();
+      if (!Array.isArray(data)) data = data?.leads ?? data?.data ?? (data && typeof data === 'object' ? [data] : []);
+      leads = data.map(normalize);
+    } catch (err) {
+      if (err.auth) {
+        const hadKey = !!getKey();
+        clearKey();
+        $('logoutBtn').classList.add('hidden');
+        showLogin(hadKey ? 'Clave incorrecta o vencida. Inténtalo de nuevo.' : '');
+        return;
+      }
+      console.warn('Usando datos de prueba:', err.message);
+      leads = MOCK_LEADS.map(normalize);
+      note = 'Mostrando datos de prueba (' + err.message + ').';
+    }
+    $('sourceNote').textContent = note;
+    $('logoutBtn').classList.toggle('hidden', !getKey());
+    render();
+  }
+
+  // ====== RENDER ======
+  const PLATFORM_STYLES = {
+    homerun: 'bg-orange-50 text-orange-700 ring-orange-200',
+    bark: 'bg-purple-50 text-purple-700 ring-purple-200'
+  };
+
+  function render() {
+    const list = $('leadList');
+    list.innerHTML = leads.map(l => {
+      const pStyle = PLATFORM_STYLES[String(l.platform).toLowerCase()] || 'bg-gray-100 text-gray-700 ring-gray-200';
+      return `
+      <article data-id="${esc(l.id)}" tabindex="0" role="button"
+        class="lead-card group bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md hover:border-blue-300 cursor-pointer transition focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <div class="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h3 class="text-base font-semibold text-gray-900 group-hover:text-blue-700 transition">${esc(l.name)}</h3>
+            <p class="text-sm text-gray-500 mt-0.5">📞 ${esc(l.phone)}</p>
+          </div>
+          <span class="text-xs font-semibold px-2.5 py-1 rounded-full ring-1 ring-inset ${pStyle}">${esc(l.platform)}</span>
+        </div>
+        <div class="mt-4 grid gap-3 sm:grid-cols-2 text-sm">
+          <div><p class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Pick Up</p><p class="text-gray-700">${esc(l.pickup)}</p></div>
+          <div><p class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Drop Off</p><p class="text-gray-700">${esc(l.dropoff)}</p></div>
+        </div>
+        ${l.note ? `<div class="mt-4 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-900"><span class="font-semibold">📝 Nota del Vendedor:</span> ${esc(l.note)}</div>` : ''}
+        <div class="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
+          <span>Vendedor: <span class="font-medium text-gray-700">${esc(l.salesperson)}</span></span>
+          <span class="text-blue-600 font-medium opacity-0 group-hover:opacity-100 transition">Registrar llamada →</span>
+        </div>
+      </article>`;
+    }).join('');
+    $('counter').textContent = `${leads.length} lead${leads.length === 1 ? '' : 's'}`;
+    $('emptyState').classList.toggle('hidden', leads.length > 0);
+  }
+
+  // ====== MODAL ======
+  function buildStatusOptions() {
+    $('statusOptions').innerHTML = STATUSES.map(s => `
+      <label class="status-opt cursor-pointer">
+        <input type="radio" name="status" value="${s}" class="sr-only" />
+        <span class="block text-center text-sm font-medium px-3 py-2.5 rounded-lg border border-gray-300 text-gray-600 hover:border-blue-400 transition">${s}</span>
+      </label>`).join('');
+  }
+
+  function openModal(id) {
+    activeLead = leads.find(l => String(l.id) === String(id));
+    if (!activeLead) return;
+    $('modalLead').textContent = `${activeLead.name} · ${activeLead.phone}`;
+    $('callForm').reset();
+    $('formError').classList.add('hidden');
+    $('modal').classList.remove('hidden');
+    setTimeout(() => $('notes').focus(), 50);
+  }
+
+  function closeModal() {
+    $('modal').classList.add('hidden');
+    activeLead = null;
+  }
+
+  // ====== GUARDAR ======
+  async function saveCall(e) {
+    e.preventDefault();
+    const status = document.querySelector('input[name="status"]:checked')?.value;
+    const notes = $('notes').value.trim();
+    const err = $('formError');
+    if (!status) { err.textContent = 'Selecciona un estado para la llamada.'; err.classList.remove('hidden'); return; }
+    err.classList.add('hidden');
+
+    const btn = $('saveBtn');
+    btn.disabled = true; btn.textContent = 'Guardando...';
+    const leadId = activeLead.id;
+
+    try {
+      if (isConfigured(URL_N8N_POST)) {
+        const res = await fetch(URL_N8N_POST, {
+          method: 'POST',
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ id_conversacion: leadId, status, notes })
+        });
+        if (res.status === 401 || res.status === 403) throw authError();
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+      } else {
+        await new Promise(r => setTimeout(r, 500)); // simulación en modo demo
+      }
+      closeModal();
+      toast('Llamada registrada correctamente', 'success');
+      removeCard(leadId);
+    } catch (ex) {
+      if (ex.auth) {
+        closeModal(); clearKey(); $('logoutBtn').classList.add('hidden');
+        showLogin('La clave ya no es válida. Introdúcela de nuevo.');
+        return;
+      }
+      err.textContent = 'No se pudo guardar: ' + ex.message + '. Intenta de nuevo.';
+      err.classList.remove('hidden');
+      toast('Error al guardar la llamada', 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Guardar y Actualizar';
+    }
+  }
+
+  function removeCard(id) {
+    const el = document.querySelector(`.lead-card[data-id="${CSS.escape(String(id))}"]`);
+    const finish = () => { leads = leads.filter(l => String(l.id) !== String(id)); render(); };
+    if (el) { el.classList.add('card-leave'); setTimeout(finish, 350); } else finish();
+  }
+
+  // ====== TOAST ======
+  function toast(msg, type) {
+    const ok = type === 'success';
+    const t = document.createElement('div');
+    t.className = `toast-enter flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg text-sm font-medium text-white ${ok ? 'bg-green-600' : 'bg-red-600'}`;
+    t.textContent = (ok ? '✓ ' : '✕ ') + msg;
+    $('toasts').appendChild(t);
+    setTimeout(() => { t.style.transition = 'opacity .3s'; t.style.opacity = 0; setTimeout(() => t.remove(), 300); }, 3200);
+  }
+
+  // ====== EVENTOS ======
+  $('leadList').addEventListener('click', e => {
+    const card = e.target.closest('.lead-card'); if (card) openModal(card.dataset.id);
+  });
+  $('leadList').addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      const card = e.target.closest('.lead-card');
+      if (card) { e.preventDefault(); openModal(card.dataset.id); }
+    }
+  });
+  $('callForm').addEventListener('submit', saveCall);
+  $('cancelBtn').addEventListener('click', closeModal);
+  $('modal').addEventListener('mousedown', e => { if (e.target === $('modal')) closeModal(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('modal').classList.contains('hidden')) closeModal(); });
+
+  $('loginForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const k = $('loginKey').value.trim();
+    if (!k) return;
+    setKey(k);
+    $('loginModal').classList.add('hidden');
+    loadLeads();
+  });
+  $('logoutBtn').addEventListener('click', () => {
+    clearKey(); leads = []; render();
+    $('logoutBtn').classList.add('hidden');
+    showLogin();
+  });
+
+  buildStatusOptions();
+  loadLeads();
+</script>
+</body>
+</html>
