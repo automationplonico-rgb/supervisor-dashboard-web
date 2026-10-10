@@ -47,7 +47,10 @@
   <div id="modal" class="hidden fixed inset-0 z-40 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
     <div class="modal-enter bg-white w-full max-w-lg rounded-2xl shadow-2xl max-h-[92vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
       <div class="px-6 pt-6 pb-4 border-b border-gray-100">
-        <h2 id="modalTitle" class="text-lg font-bold text-gray-900">Registrar Llamada</h2>
+        <div class="flex items-start justify-between gap-3">
+          <h2 id="modalTitle" class="text-lg font-bold text-gray-900">Registrar Llamada</h2>
+          <button type="button" id="hubspotBtn" class="shrink-0 text-xs font-semibold text-blue-700 border border-blue-200 bg-blue-50 hover:bg-blue-100 rounded-lg px-3 py-1.5 transition">Abrir en HubSpot ↗</button>
+        </div>
         <p id="modalLead" class="text-sm text-gray-500 mt-0.5"></p>
       </div>
 
@@ -148,8 +151,25 @@
       salesperson: l.salesperson ?? l.vendedor ?? l.seller ?? l.assigned_to ?? '—',
       pickup: l.pickup ?? l.pick_up ?? l.pickup_address ?? '—',
       dropoff: l.dropoff ?? l.drop_off ?? l.dropoff_address ?? '—',
-      note: String(l.supervisor_note ?? l.nota_vendedor ?? '').trim()
+      note: String(l.supervisor_note ?? l.nota_vendedor ?? '').trim(),
+      hubspotUrl: String(l.hubspot_url ?? '').trim()
     };
+  }
+
+  // Ficha del contacto en HubSpot. Si el flujo no envia hubspot_url, abre la busqueda por telefono.
+  const HUBSPOT_PORTAL_ID = '144268644';
+  function hubspotUrlFor(l) {
+    if (/^https:\/\/app(-eu1)?\.hubspot\.com\//.test(l.hubspotUrl)) return l.hubspotUrl;
+    const q = String(l.phone).replace(/[^\d+]/g, '');
+    return `https://app-eu1.hubspot.com/contacts/${HUBSPOT_PORTAL_ID}/objects/0-1/views/all/list?query=${encodeURIComponent(q)}`;
+  }
+
+  // Abre HubSpot en otra pestana y deja el modal abierto para tomar notas durante la llamada.
+  function startCall(id) {
+    const lead = leads.find(l => String(l.id) === String(id));
+    if (!lead) return;
+    window.open(hubspotUrlFor(lead), 'hubspot_call', 'noopener');
+    openModal(id);
   }
 
   // ====== CARGA ======
@@ -208,7 +228,10 @@
         ${l.note ? `<div class="mt-4 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-900"><span class="font-semibold">📝 Nota del Vendedor:</span> ${esc(l.note)}</div>` : ''}
         <div class="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
           <span>Vendedor: <span class="font-medium text-gray-700">${esc(l.salesperson)}</span></span>
-          <span class="text-blue-600 font-medium opacity-0 group-hover:opacity-100 transition">Registrar llamada →</span>
+          <span class="flex items-center gap-3">
+            <button type="button" data-call class="inline-flex items-center gap-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 transition">📞 Llamar</button>
+            <span class="text-blue-600 font-medium opacity-0 group-hover:opacity-100 transition hidden sm:inline">Registrar llamada →</span>
+          </span>
         </div>
       </article>`;
     }).join('');
@@ -300,18 +323,22 @@
 
   // ====== EVENTOS ======
   $('leadList').addEventListener('click', e => {
-    const card = e.target.closest('.lead-card'); if (card) openModal(card.dataset.id);
+    const card = e.target.closest('.lead-card'); if (!card) return;
+    if (e.target.closest('[data-call]')) startCall(card.dataset.id); else openModal(card.dataset.id);
   });
   $('leadList').addEventListener('keydown', e => {
-    if (e.key === 'Enter' || e.key === ' ') {
+    if ((e.key === 'Enter' || e.key === ' ') && !e.target.closest('[data-call]')) {
       const card = e.target.closest('.lead-card');
       if (card) { e.preventDefault(); openModal(card.dataset.id); }
     }
   });
   $('callForm').addEventListener('submit', saveCall);
   $('cancelBtn').addEventListener('click', closeModal);
-  $('modal').addEventListener('mousedown', e => { if (e.target === $('modal')) closeModal(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('modal').classList.contains('hidden')) closeModal(); });
+  // Con notas escritas, un clic fuera o Esc no cierra el modal (evita perder lo anotado en plena llamada).
+  const safeToClose = () => !$('notes').value.trim() || confirm('Hay notas sin guardar. ¿Cerrar y descartarlas?');
+  $('modal').addEventListener('mousedown', e => { if (e.target === $('modal') && safeToClose()) closeModal(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('modal').classList.contains('hidden') && safeToClose()) closeModal(); });
+  $('hubspotBtn').addEventListener('click', () => { if (activeLead) window.open(hubspotUrlFor(activeLead), 'hubspot_call', 'noopener'); });
 
   $('loginForm').addEventListener('submit', e => {
     e.preventDefault();
